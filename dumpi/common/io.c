@@ -203,12 +203,14 @@ int dumpi_write_keyval_record(dumpi_profile *profile,
     fprintf(stderr, "[DUMPI-IO] dumpi_write_keyval_record at offset 0x%llx\n",
 	    ((long long)DUMPI_WRITE_TELL(profile)));
   assert(profile);
+  profile->keyval = DUMPI_WRITE_TELL(profile);
   if(keyval) {
     dumpi_keyval_entry *curr = keyval->head;
     put32(profile, keyval->count);
     while(curr) {
       put_string(profile, curr->key);
       put_string(profile, curr->val);
+      curr = curr->next;
     }
   }
   else {
@@ -237,7 +239,8 @@ int dumpi_read_keyval_record(dumpi_profile *profile,
       dumpi_push_keyval_entry(keyval, key, val);
       free(key);
       free(val);
-      DUMPI_SEEK(profile, callpos, SEEK_SET);
+      // jyc: got error
+      //DUMPI_SEEK(profile, callpos, SEEK_SET);
     }
   }
   else {
@@ -577,7 +580,9 @@ dumpi_profile *dumpi_alloc_output_profile(int cpu_offset, int wall_offset,
   retval->version[2] = dumpi_subsubversion;
   retval->cpu_time_offset = cpu_offset;
   retval->wall_time_offset = wall_offset;
-  dumpi_start_stream_write(retval);
+  // We will delay this after finding deltat
+  // fprintf(stderr, "offset was set: %d %d\n", cpu_offset, wall_offset);
+  // dumpi_start_stream_write(retval);
   return retval;
 }
 

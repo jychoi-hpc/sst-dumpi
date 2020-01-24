@@ -291,6 +291,7 @@ extern "C" {
     uint64_t total_file_size;
     uint64_t pos;
     uint64_t terminate_pos;
+    double deltat; /* jyc: delta to adjust when writing. Internal use only */
   } dumpi_profile;
 
   /**

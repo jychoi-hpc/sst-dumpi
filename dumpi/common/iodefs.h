@@ -414,6 +414,14 @@ extern "C" {
     return mask;
   }
 
+  /** Utility to adjust clock ts with dt */
+  static inline void time_update(dumpi_clock *ts, double dt) {
+    double t = (double)ts->sec + (double)ts->nsec/1E9 + dt;
+    //fprintf(stderr, "%s: t= %f %f\n", __FUNCTION__, t, t-dt);
+    ts->sec = (int) t;
+    ts->nsec = (int)((t-(int)t)*1E9);
+  }
+
   /** Test whether we are reading/writing CPU clock information */
 #define DO_TIME_CPU(MASK)  (MASK & DUMPI_TIME_CPU)
 
@@ -435,10 +443,24 @@ extern "C" {
       put32(profile, cpu->stop.nsec);
     }
     if(DO_TIME_WALL(config_mask)) {
+      /*
       put16(profile, (uint16_t)(wall->start.sec - profile->wall_time_offset));
       put32(profile, wall->start.nsec);
       put16(profile, (uint16_t)(wall->stop.sec - profile->wall_time_offset));
       put32(profile, wall->stop.nsec);
+      */
+      dumpi_clock ts;
+      ts.sec = wall->start.sec - profile->wall_time_offset;
+      ts.nsec = wall->start.nsec;
+      time_update(&ts, profile->deltat);
+      put16(profile, (uint16_t)ts.sec);
+      put32(profile, ts.nsec);
+
+      ts.sec = wall->stop.sec - profile->wall_time_offset;
+      ts.nsec = wall->stop.nsec;
+      time_update(&ts, profile->deltat);
+      put16(profile, (uint16_t)ts.sec);
+      put32(profile, ts.nsec);
     }
   }
 

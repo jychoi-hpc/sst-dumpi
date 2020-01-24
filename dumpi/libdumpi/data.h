@@ -101,6 +101,7 @@ extern "C" {
     const char          *output_file; /*fully qualified name*/
     int                  comm_rank;   /* MPI communicator rank. */
     int                  comm_size;   /* MPI communicator size. */
+    int32_t              rank0_wall_time_offset; /* rank0 wall time offset */
   } dumpi_global_t;
 
   /**

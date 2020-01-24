@@ -86,6 +86,60 @@ static void open_output_file(void);
 static void process_keyval(const char *key, const char *value);
 static void create_meta_file(void);
 
+#define N_PINGPONGS 100
+#define BILLION 1E9
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
+/*
+double get_time()
+{
+    struct timespec tspec;
+    clock_gettime(CLOCK_MONOTONIC, &tspec);
+
+    // Calculate time it took
+    double ts = tspec.tv_sec + tspec.tv_nsec / BILLION;
+    return ts;
+}
+*/
+
+double get_time()
+{
+    dumpi_clock cpu, wall;
+    dumpi_get_time(&cpu, &wall);
+
+    // Calculate time it took
+    double ts = wall.sec + wall.nsec / BILLION;
+    return ts;
+}
+
+double SKaMPI_pingpong(int p1, int p2) {
+  assert(dumpi_global != NULL);
+  double td_min = -1E9;
+  double td_max = 1E9;
+  double s_last, t_last, s_now, t_now, deltat;
+
+  for (int i = 0; i < N_PINGPONGS; i++) {
+    if (dumpi_global->comm_rank == p1) {
+      s_last = get_time();
+      PMPI_Send(&s_last, 1, MPI_DOUBLE, p2, 0, MPI_COMM_WORLD);
+      PMPI_Recv(&t_last, 1, MPI_DOUBLE, p2, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      s_now = get_time();
+      td_min = MAX(td_min, t_last - s_now);
+      td_max = MIN(td_max, t_last - s_last);
+    } else if (dumpi_global->comm_rank == p2) {
+      PMPI_Recv(&s_last, 1, MPI_DOUBLE, p1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      t_last = get_time();
+      PMPI_Send(&t_last, 1, MPI_DOUBLE, p1, 0, MPI_COMM_WORLD);
+      t_now = get_time();
+      td_min = MAX(td_min, s_last - t_now);
+      td_max = MIN(td_max, s_last - t_last);
+    }
+  }
+  deltat = (td_min + td_max) / 2.0;
+  //fprintf(stderr, "%s: rank, td_min, td_max, deltat= %d\t%.09f\t%.09f\t%.09f\n", __FUNCTION__, dumpi_global->comm_rank, td_min, td_max, deltat);
+  return deltat;
+}
 
 /****************************************************/
 
@@ -392,6 +446,45 @@ void open_output_file(void) {
   assert(dumpi_global->profile->file != NULL);
   dumpi_global->keyval = dumpi_alloc_keyval_record();
   assert(dumpi_global->profile != NULL && dumpi_global->profile->file != NULL);
+
+  /* check time deltat */
+  {
+    double deltat = 0.0;
+    int mpi_initialized;
+    char val[64];
+    PMPI_Initialized(&mpi_initialized);
+    if(mpi_initialized && (dumpi_global->comm_size>1)) {
+      for (int i = 1; i < dumpi_global->comm_size; i++)
+      {
+        PMPI_Barrier(MPI_COMM_WORLD);
+        if (dumpi_global->comm_rank == 0) {
+          deltat = SKaMPI_pingpong(i, 0);
+        } else if (dumpi_global->comm_rank == i) {
+          deltat = SKaMPI_pingpong(i, 0);
+        }
+      }
+      if (dumpi_global->comm_rank==0) deltat = 0.0;
+      dumpi_global->rank0_wall_time_offset = dumpi_global->profile->wall_time_offset;
+      PMPI_Bcast(&(dumpi_global->rank0_wall_time_offset),1,MPI_INT,0,MPI_COMM_WORLD);
+    }
+
+    if(dumpi_debug & DUMPI_DEBUG_LIBDUMPI)
+      fprintf(stderr, "[DUMPI-LIBDUMPI]: deltat= %f\n", dumpi_global->comm_rank, deltat);
+    //fprintf(stderr, "%d:%s: rank0, local, dt= %ld %ld %ld\n", dumpi_global->comm_rank, __FUNCTION__, 
+    //  dumpi_global->rank0_wall_time_offset, dumpi_global->profile->wall_time_offset, 
+    //  (dumpi_global->rank0_wall_time_offset-dumpi_global->profile->wall_time_offset));
+    dumpi_global->profile->wall_time_offset = dumpi_global->rank0_wall_time_offset;
+    dumpi_global->profile->deltat = deltat;
+
+    /* jyc: writing offset here */
+    if(dumpi_debug & DUMPI_DEBUG_TRACEIO)
+      fprintf(stderr, "[DUMPI-IO] dumpi_start_stream_write at offset 0x%llx\n",
+        ((long long)DUMPI_WRITE_TELL(dumpi_global->profile)));
+    assert(dumpi_global->profile);
+    dumpi_global->profile->body = DUMPI_WRITE_TELL(dumpi_global->profile);
+    put32(dumpi_global->profile, dumpi_global->profile->cpu_time_offset);
+    put32(dumpi_global->profile, dumpi_global->rank0_wall_time_offset);
+  }
 }
 
 dumpi_setting profiling_to_setting(const char *value) {
