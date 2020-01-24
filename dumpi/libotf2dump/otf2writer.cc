@@ -1052,6 +1052,10 @@ OTF2_Writer::register_comm_world(mpi_comm_t id, int size, int rank)
   grp->local_id = MPI_GROUP_WORLD_ID;
   grp->global_id = MPI_GROUP_WORLD_ID;
   grp->world_size = size;
+  grp->global_ranks.resize(size);
+  for (int i=0; i < size; ++i){
+    grp->global_ranks[i] = i;
+  }
 
   OTF2_MPI_Comm::shared_ptr comm = comms_.make_new(id);
   comm->local_id=id;
@@ -1088,6 +1092,8 @@ void OTF2_Writer::register_comm_self(mpi_comm_t id) {
   grp->is_comm_self = true;
   grp->local_id = MPI_GROUP_SELF_ID;
   grp->global_id = MPI_GROUP_SELF_ID;
+  grp->global_ranks.resize(1);
+  grp->global_ranks[0] = world_.rank;
 
   auto comm = comms_.make_new(id);
   comm->local_id=id;
@@ -1750,8 +1756,9 @@ OTF2_Writer::type_is_known(mpi_type_t type)
 OTF2_WRITER_RESULT
 OTF2_Writer::mpi_comm_dup_first_pass(mpi_comm_t comm, mpi_comm_t newcomm)
 {
+  printf("mpi_comm_dup_first_pass: comm: %d newcomm: %d\n", comm, newcomm);
   OTF2_MPI_Comm::shared_ptr parent_comm = comms_[comm];
-  OTF2_MPI_Comm::shared_ptr dup_comm = comms_[newcomm];
+  OTF2_MPI_Comm::shared_ptr dup_comm = comms_.make_new(newcomm);
   dup_comm->local_id = newcomm;
   dup_comm->global_id = parent_comm->global_id;
   dup_comm->group = parent_comm->group;
@@ -1787,8 +1794,39 @@ OTF2_Writer::mpi_comm_free(otf2_time_t start, otf2_time_t stop, mpi_comm_t comm)
 OTF2_WRITER_RESULT
 OTF2_Writer::mpi_comm_group_first_pass(mpi_comm_t comm, mpi_group_t group)
 {
+  printf("mpi_comm_group_first_pass: comm=%d group=%d\n", comm, group);
   OTF2_MPI_Comm::shared_ptr comm_st = comms_[comm];
+  /*
+  printf("mpi_comm_group_first_pass: comm_st->is_split=%d\n", comm_st->is_split);
+  printf("mpi_comm_group_first_pass: comm_st->group->global_id=%d\n", comm_st->group->global_id);
+  printf("mpi_comm_group_first_pass: comm_st->group->local_id=%d\n", comm_st->group->local_id);
+  printf("mpi_comm_group_first_pass: comm_st->group->size=%d\n", comm_st->group->size());
+  printf("mpi_comm_group_first_pass: comm_st->group->global_ranks.size()=%d\n", comm_st->group->global_ranks.size());
 
+  printf("groups_.the_map.size: %d\n", groups_.the_map.size());
+  for (auto iter = groups_.the_map.begin(); iter != groups_.the_map.end(); ++iter) {
+    printf("groups_.key: %d %d\n", iter->first, iter->second.size());
+    auto group = iter->second.front();
+    printf("group->global_id=%d\n", group->global_id);
+    printf("group->local_id=%d\n", group->local_id);
+    printf("group->size=%d\n", group->size());
+    printf("group->global_ranks.size()=%d\n", group->global_ranks.size());
+  }
+
+  printf("comms_.the_map.size: %d\n", comms_.the_map.size());
+  for (auto iter = comms_.the_map.begin(); iter != comms_.the_map.end(); ++iter) {
+    printf("comms_.key: %d %d\n", iter->first, iter->second.size());
+    auto comm = iter->second.front();
+    printf("comm->global_id=%d\n", comm->global_id);
+    printf("comm->local_id=%d\n", comm->local_id);
+    printf("comm->size=%d\n", comm->size());
+    printf("comm->group->local_id=%d\n", comm->group->local_id);
+    printf("comm->group->global_ranks.size()=%d\n", comm->group->global_ranks.size());
+  }
+  */
+
+  /*
+  // jyc: doens't make sense to me. will replace all
   if (comm == comm_world_id_){
     groups_.make_new(group, comm_st->group);
     comm_st->group->is_comm_world = true;
@@ -1802,6 +1840,9 @@ OTF2_Writer::mpi_comm_group_first_pass(mpi_comm_t comm, mpi_group_t group)
       throw exception("mismatched commmunicator group in call to MPI_Comm_group");
     }
   }
+  */
+
+  groups_.make_new(group, comm_st->group);
 
   return OTF2_WRITER_SUCCESS;
 }
@@ -1832,10 +1873,12 @@ OTF2_Writer::mpi_comm_group(otf2_time_t start, otf2_time_t stop, mpi_comm_t comm
 OTF2_WRITER_RESULT
 OTF2_Writer::mpi_comm_create_first_pass(mpi_comm_t comm, mpi_group_t group, mpi_comm_t newcomm)
 {
+  printf("mpi_comm_create_first_pass: comm= %d group= %d newcomm= %d\n", comm, group, newcomm);
   //I don't know anything about groups yet - just build the tree
   OTF2_MPI_Comm::shared_ptr parent_comm = comms_[comm];
   OTF2_MPI_Comm::shared_ptr sub_comm = comms_.make_new(newcomm);
   OTF2_MPI_Group::shared_ptr subgrp = groups_[group];
+
   sub_comm->local_id = newcomm;
   sub_comm->parent = parent_comm;
   sub_comm->group = subgrp;
@@ -1865,6 +1908,7 @@ OTF2_WRITER_RESULT
 OTF2_Writer::mpi_comm_split_first_pass(mpi_comm_t oldcomm,
                                        int color, int key, mpi_comm_t newcomm)
 {
+  printf("mpi_comm_split_first_pass: oldcomm: %d newcomm: %d color: %d\n", oldcomm, newcomm, color);
   OTF2_MPI_Comm::shared_ptr parent_comm = comms_[oldcomm];
   OTF2_MPI_Comm::shared_ptr child_comm = comms_.make_new(newcomm);
   //there's no group here yet
@@ -1872,6 +1916,7 @@ OTF2_Writer::mpi_comm_split_first_pass(mpi_comm_t oldcomm,
   child_comm->parent = parent_comm;
   child_comm->local_id = newcomm;
   child_comm->world_rank = parent_comm->world_rank;
+  printf("mpi_comm_split_first_pass: parent size:%d name:%s\n", parent_comm->group->size(), parent_comm->name);
 
   pending_comm_ = child_comm;
 

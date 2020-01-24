@@ -100,7 +100,7 @@ static int add_new_comm(int global_id_offset, std::vector<active_profile>& creat
     std::map<int, std::vector<dumpi::OTF2_Writer*>> color_map;
     for (active_profile& prof : creators){
       dumpi::OTF2_MPI_Comm::shared_ptr comm = prof.writer->pending_comm();
-      if (comm->color != DUMPI_UNDEFINED)
+      if (comm->color >= 0) // colir should be nonnegative integer
         color_map[comm->color].emplace_back(prof.writer);
     }
 
@@ -211,6 +211,9 @@ int main(int argc, char **argv)
 
   std::cout << "Executing first pass to construct communicators" << std::endl;
 
+  FILE *fp;
+  fp = fopen("dumpi_comms.dat", "w+");
+
   while(num_finished < md.numTraces()){
     if (active_profiles.empty()){
       for (auto iter = pending_comm_creates.begin(); iter != pending_comm_creates.end(); ++iter){
@@ -229,10 +232,14 @@ int main(int argc, char **argv)
       active_profile active = active_profiles.back();
       active_profiles.pop_back();
 
-      if (active.writer->pending_comm()){
+      if (active.writer->pending_comm()) {
         std::cerr << "Rank " << active.writer->world_rank()
               << " has pending comm but is still in active list " << std::endl;
-        abort();
+        fprintf(stderr, "%d: pending commm: parent->global_id: %d\n", active.writer->world_rank(), active.writer->pending_comm()->parent->global_id);
+        //abort();
+        continue;
+      } else {
+        fprintf(stderr, "%d: no pending commm\n", active.writer->world_rank());
       }
 
       int stream_active = 1;
@@ -250,13 +257,49 @@ int main(int argc, char **argv)
         //we have more calls, but progress has stalled on a collective
         int global_id = active.writer->pending_comm()->parent->global_id;
         pending_comm_creates[global_id].push_back(active);
+        fprintf(stderr, "%d: pending commm: parent->global_id: %d\n", active.writer->world_rank(), global_id);
       } else {
+        fprintf(stderr, "num_finished: %d\n", num_finished);
+        fprintf(stderr, "size: %d\n", writers[num_finished].all_comms().the_map.size());
+        /*
+        for (auto& comm : writers[num_finished].all_comms().the_map)
+        {
+          printf("%d: id=%d gid=%d size=%d l=%d w=%d\n", 
+            num_finished, comm.first, comm.second.front()->global_id, comm.second.front()->size(), comm.second.front()->local_rank, comm.second.front()->world_rank);
+          printf("    group=%d world_size=%d ranks.size=%d\n", 
+            comm.second.front()->group->local_id, 
+            comm.second.front()->group->world_size, 
+            comm.second.front()->group->global_ranks.size());
+          auto& vec = comm.second.front()->group->global_ranks;
+          for (int i=0; i<vec.size(); i++)
+          {
+            printf("    [%d]=%d ", i, vec[i]);
+          }
+          printf("\n");
+        }
+        */
+
+        for (auto& comm : writers[num_finished].all_comms().the_map)
+        {
+          int rank = num_finished;
+          int key = comm.first;
+          auto& vec = comm.second.front()->group->global_ranks;
+          fprintf(fp, "%d %d %d ", rank, key, vec.size());
+          for (int i=0; i<vec.size(); i++)
+          {
+            fprintf(fp, "%d ", vec[i]);
+          }
+          fprintf(fp, "%d ", comm.second.front()->global_id);
+          fprintf(fp, "\n");
+        }
+
         //nope, stream is over
         undumpi_close(active.profile);
         ++num_finished;
       }
     }
   }
+  fclose(fp);
 
 
   std::cout << "Executing second pass to build traces" << std::endl;
