@@ -74,6 +74,55 @@ int handle_recv (const dumpi_recv *prm, uint16_t thread, const dumpi_time *cpu,
 }
 */
 
+#define DUMPI_HANDLER_RESET(FUNC, GUARD)						\
+  static								\
+  int handle_ ## FUNC (const dumpi_ ## FUNC *prm, uint16_t thread,	\
+		   const dumpi_time *cpu, const dumpi_time *wall,	\
+		   const dumpi_perfinfo *perf, void *userarg)		\
+  {									\
+    d2dopts *opts = (d2dopts*)userarg;					\
+    assert(GUARD >= 0 && GUARD < DUMPI_END_OF_STREAM);			\
+    opts->footer.call_count[GUARD]++;					\
+    if(opts->oprofile == NULL) {					\
+      opts->oprofile =							\
+	dumpi_alloc_output_profile(cpu->start.sec, wall->start.sec, 0);	\
+      opts->oprofile->file = dumpi_open_output_file(opts->outname);	\
+    }									\
+    if (opts->checkinit) { \
+      printf(">>> handle: %d %d\n", GUARD, opts->footer.call_count[GUARD]); \
+      if (opts->footer.call_count[GUARD]==2) { \
+        printf(">>> turn on\n"); \
+        for(int i = 0; i < DUMPI_ALL_FUNCTIONS; ++i) opts->output.function[i] = opts->saved.function[i]; \
+      } \
+      if (opts->footer.call_count[GUARD]==3) { \
+        printf(">>> turn off\n"); \
+        for(int i = 0; i < DUMPI_ALL_FUNCTIONS; ++i) opts->output.function[i] = 0; \
+        opts->output.function[DUMPI_Init] = 1; \
+        opts->output.function[DUMPI_Finalize] = 1; \
+        opts->output.function[DUMPI_Initialized] = 1; \
+        opts->output.function[DUMPI_Comm_group] = 1; \
+        opts->output.function[DUMPI_Group_union] = 1; \
+        opts->output.function[DUMPI_Group_intersection] = 1; \
+        opts->output.function[DUMPI_Group_difference] = 1; \
+        opts->output.function[DUMPI_Group_incl] = 1; \
+        opts->output.function[DUMPI_Group_excl] = 1; \
+        opts->output.function[DUMPI_Group_range_incl] = 1; \
+        opts->output.function[DUMPI_Group_range_excl] = 1; \
+        opts->output.function[DUMPI_Comm_dup] = 1; \
+        opts->output.function[DUMPI_Comm_create] = 1; \
+        opts->output.function[DUMPI_Comm_split] = 1; \
+      } \
+    } \
+    if(opts->output.function[GUARD]) {					\
+      dumpi_write_ ## FUNC (prm, thread, cpu, wall, perf,		\
+			    &opts->output, opts->oprofile);		\
+    }									\
+    else {								\
+      opts->footer.ignored_count[GUARD]++;				\
+    }									\
+    return 1;								\
+  }
+
 #define DUMPI_HANDLER(FUNC, GUARD)						\
   static								\
   int handle_ ## FUNC (const dumpi_ ## FUNC *prm, uint16_t thread,	\
@@ -272,7 +321,7 @@ DUMPI_HANDLER(wtime, DUMPI_Wtime)
 DUMPI_HANDLER(wtick, DUMPI_Wtick)
 DUMPI_HANDLER(init, DUMPI_Init)
 DUMPI_HANDLER(finalize, DUMPI_Finalize)
-DUMPI_HANDLER(initialized, DUMPI_Initialized)
+DUMPI_HANDLER_RESET(initialized, DUMPI_Initialized)
 DUMPI_HANDLER(abort, DUMPI_Abort)
 DUMPI_HANDLER(close_port, DUMPI_Close_port)
 DUMPI_HANDLER(comm_accept, DUMPI_Comm_accept)

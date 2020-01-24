@@ -72,6 +72,9 @@ extern "C" {
     const char *outname; /* Used internally for parsing */
     dumpi_profile *oprofile;
     dumpi_footer footer;
+    dumpi_outputs saved;
+    int checkinit;
+    int deltat;
   } d2dopts;
 
   /**

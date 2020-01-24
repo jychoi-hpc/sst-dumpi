@@ -151,6 +151,25 @@ int undumpi_read_stream_full(
   void *uarg,
   bool print_progress)
 {
+  // Check keyval for DUMPI_WALLCLOCK_DELTA
+  double deltat = 0;
+  {
+    fprintf(stderr, "checking delta-t\n");
+    dumpi_keyval_record *kv = undumpi_read_keyval_record(profile);
+    dumpi_keyval_entry *curr;
+    curr = kv->head;
+    //print_keyval(kv);
+    while (curr) {
+      fprintf(stderr, "keyval: %s=%s\n", curr->key, curr->val);
+      if (strcmp(curr->key, "DUMPI_WALLCLOCK_DELTA") == 0) {
+        deltat = strtof(curr->val, NULL);
+        break;
+      }
+      curr = curr->next;
+    }
+    dumpi_free_keyval_record(kv);
+    fprintf(stderr, "  delta-t: %f\n", deltat);
+  }
   int mpi_finalized = 0;
   /* dumpi_function currfunc; */
   libundumpi_cbpair callarr[DUMPI_END_OF_STREAM] = {{NULL, NULL}};
@@ -159,9 +178,18 @@ int undumpi_read_stream_full(
   libundumpi_populate_handlers(callback, callarr);
   libundumpi_populate_callouts(callback, callarr);
 
+  printf("Read profile until %lu out of %lu\n",
+         profile->terminate_pos, profile->total_file_size);
+
   /* Go */
   mpi_finalized = 0;
   assert(dumpi_start_stream_read(profile) != 0);
+  fprintf(stderr, "%s: profile->wall_time_offset= %d\n", __FUNCTION__, profile->wall_time_offset);
+  if ((int)deltat) {
+    fprintf(stderr, "adjust delta-t: %f\n", deltat);
+    profile->wall_time_offset -= (int)deltat;
+  }
+  fprintf(stderr, "%s: profile->wall_time_offset= %d\n", __FUNCTION__, profile->wall_time_offset);
   long num_fxns_called = 0;
    //print every percent progress
   int last_percent_done = 0;

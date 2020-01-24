@@ -84,7 +84,9 @@ int d2d_collect_opts(int argc, char **argv, d2dopts *opt) {
     {"without-mpi", required_argument, NULL, 'M'},
     {"infile", required_argument, NULL, 'i'},
     {"metafile", required_argument, NULL, 'I'},
-    {"outfile", required_argument, NULL, 'o'}
+    {"outfile", required_argument, NULL, 'o'},
+    {"checkinit", no_argument, NULL, 'x'},
+    {"deltat", no_argument, NULL, 'd'}
   };
   assert(opt != NULL);
   memset(opt, 0, sizeof(d2dopts));
@@ -92,7 +94,7 @@ int d2d_collect_opts(int argc, char **argv, d2dopts *opt) {
   opt->write_userfuncs = 1;
   for(i = 0; i < DUMPI_END_OF_STREAM; ++i) opt->output.function[i] = 1;
   
-  while((ch = getopt_long(argc, argv, "hvfFwWcCpPuUm:M:i:I:o:",
+  while((ch = getopt_long(argc, argv, "hvfFwWcCpPuUm:M:i:I:o:xd",
 			  longopts, NULL)) != -1)
     {
       switch(ch) {
@@ -161,6 +163,12 @@ int d2d_collect_opts(int argc, char **argv, d2dopts *opt) {
       case 'o':
 	opt->outfile = strdup(optarg);
 	break;
+      case 'x':
+        opt->checkinit = 1;
+        break;
+      case 'd':
+        opt->deltat = 1;
+        break;
       default:
 	error = 1;
       }

@@ -46,7 +46,7 @@ Questions? Contact sst-macro-help@sandia.gov
 #include <stdlib.h>
 
 int main(int argc, char **argv) {
-  d2dopts opt;
+  d2dopts opt = {0};
   int error = 0;
   if((error = d2d_collect_opts(argc, argv, &opt))) goto abandon_ship;
   if(opt.help) {
@@ -65,7 +65,25 @@ int main(int argc, char **argv) {
     if(opt.verbose) fprintf(stderr, "Parsing tracefiles.\n");
     ifname = (char*)malloc(meta.maxname);
     ofname = (char*)malloc(meta.maxname);
+    for(int i = 0; i < DUMPI_ALL_FUNCTIONS; ++i) opt.saved.function[i] = opt.output.function[i];
     for(rank = 0; rank < meta.size; ++rank) {
+      if (opt.checkinit) {
+        for(int i = 0; i < DUMPI_ALL_FUNCTIONS; ++i) opt.output.function[i] = 0;
+        opt.output.function[DUMPI_Init] = 1;
+        opt.output.function[DUMPI_Finalize] = 1;
+        opt.output.function[DUMPI_Initialized] = 1;
+        opt.output.function[DUMPI_Comm_group] = 1;
+        opt.output.function[DUMPI_Group_union] = 1;
+        opt.output.function[DUMPI_Group_intersection] = 1;
+        opt.output.function[DUMPI_Group_difference] = 1;
+        opt.output.function[DUMPI_Group_incl] = 1;
+        opt.output.function[DUMPI_Group_excl] = 1;
+        opt.output.function[DUMPI_Group_range_incl] = 1;
+        opt.output.function[DUMPI_Group_range_excl] = 1;
+        opt.output.function[DUMPI_Comm_dup] = 1;
+        opt.output.function[DUMPI_Comm_create] = 1;
+        opt.output.function[DUMPI_Comm_split] = 1;
+      }
       snprintf(ifname, meta.maxname, meta.traceformat, rank);
       snprintf(ofname, meta.maxname, meta.outformat, rank);
       if(opt.verbose) {
